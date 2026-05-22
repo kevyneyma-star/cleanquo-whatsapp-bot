@@ -26,7 +26,7 @@ export async function notifyAdminQuote({ conversation, quote }) {
     quote
   };
 
-  await Promise.all([
+  await notifyAdminChannels([
     sendAdminWhatsApp(summary, conversation.userId),
     postAdminWebhook(payload)
   ]);
@@ -46,7 +46,7 @@ export async function notifyAdminPop({ conversation, media }) {
     "Please verify bank clearance before marking this booking as final."
   ].join("\n");
 
-  await Promise.all([
+  await notifyAdminChannels([
     config.ADMIN_WHATSAPP_NUMBER ? sendText(config.ADMIN_WHATSAPP_NUMBER, message) : null,
     postAdminWebhook({
       type: "pop_received",
@@ -56,6 +56,15 @@ export async function notifyAdminPop({ conversation, media }) {
       quote: conversation.quote
     })
   ]);
+}
+
+async function notifyAdminChannels(tasks) {
+  const results = await Promise.allSettled(tasks);
+  for (const result of results) {
+    if (result.status === "rejected") {
+      console.warn("Admin notification failed:", result.reason?.message ?? result.reason);
+    }
+  }
 }
 
 async function sendAdminWhatsApp(summary, userId) {
