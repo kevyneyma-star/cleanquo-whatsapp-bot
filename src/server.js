@@ -220,12 +220,13 @@ function renderAdminDashboard() {
     body { margin: 0; }
     header { background: #111827; color: white; padding: 18px 24px; }
     main { max-width: 1120px; margin: 0 auto; padding: 24px; }
-    .bar { display: flex; gap: 12px; align-items: center; justify-content: space-between; margin-bottom: 18px; }
+    .bar { display: flex; gap: 12px; align-items: center; justify-content: space-between; margin-bottom: 18px; flex-wrap: wrap; }
     .status { font-size: 14px; color: #52606d; }
     button { border: 0; background: #111827; color: white; padding: 10px 14px; border-radius: 6px; cursor: pointer; font-weight: 700; }
     button.secondary { background: #e4e7eb; color: #1f2933; }
     button.approve { background: #147d64; }
     input { padding: 10px; border: 1px solid #cbd2d9; border-radius: 6px; min-width: 140px; }
+    input.secret { min-width: min(420px, 80vw); }
     .grid { display: grid; gap: 14px; }
     .card { background: white; border: 1px solid #d9e2ec; border-radius: 8px; padding: 16px; }
     .card h2 { margin: 0 0 8px; font-size: 18px; }
@@ -236,6 +237,7 @@ function renderAdminDashboard() {
     .empty { text-align: center; padding: 42px; color: #616e7c; }
     .pending { color: #9a3412; font-weight: 700; }
     .sent { color: #147d64; font-weight: 700; }
+    .auth { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   </style>
 </head>
 <body>
@@ -247,26 +249,41 @@ function renderAdminDashboard() {
       <div>
         <div class="status" id="status">Loading quotes...</div>
       </div>
-      <button class="secondary" id="refresh">Refresh</button>
+      <div class="auth">
+        <input class="secret" id="secret" type="password" placeholder="Admin approval secret">
+        <button class="secondary" id="saveSecret">Use Secret</button>
+        <button class="secondary" id="refresh">Refresh</button>
+      </div>
     </div>
     <section class="grid" id="quotes"></section>
   </main>
   <script>
     const money = new Intl.NumberFormat("en-ZA", { style: "currency", currency: "ZAR" });
     let secret = new URLSearchParams(location.search).get("secret") || localStorage.getItem("cleanquo_admin_secret") || "";
-    if (!secret) {
-      secret = prompt("Admin approval secret");
-      if (secret) localStorage.setItem("cleanquo_admin_secret", secret);
-    }
+    document.getElementById("secret").value = secret;
+    if (secret) localStorage.setItem("cleanquo_admin_secret", secret);
 
     document.getElementById("refresh").addEventListener("click", loadQuotes);
+    document.getElementById("saveSecret").addEventListener("click", () => {
+      secret = document.getElementById("secret").value.trim();
+      if (secret) localStorage.setItem("cleanquo_admin_secret", secret);
+      loadQuotes();
+    });
     loadQuotes();
 
     async function loadQuotes() {
+      secret = document.getElementById("secret").value.trim();
+      if (!secret) {
+        setStatus("Enter the admin approval secret to load quotes.");
+        renderQuotes([]);
+        return;
+      }
       setStatus("Loading quotes...");
       const response = await fetch("/admin/quotes?secret=" + encodeURIComponent(secret));
       if (!response.ok) {
-        setStatus("Could not load quotes. Check the admin secret.");
+        localStorage.removeItem("cleanquo_admin_secret");
+        setStatus("Could not load quotes. Check the admin approval secret in Render.");
+        renderQuotes([]);
         return;
       }
       const data = await response.json();
