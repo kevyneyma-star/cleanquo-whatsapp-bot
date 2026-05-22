@@ -43,6 +43,11 @@ async function route(request, response) {
     return;
   }
 
+  if (request.method === "GET" && url.pathname === "/admin") {
+    sendHtml(response, 200, renderAdminDashboard());
+    return;
+  }
+
   if (request.method === "GET" && url.pathname === "/webhooks/whatsapp") {
     const challenge = verifyWebhookChallenge(Object.fromEntries(url.searchParams));
     if (!challenge) {
@@ -117,7 +122,7 @@ async function route(request, response) {
     }
 
     await approveQuoteForCustomer({
-      userId: approveMatch[1],
+      userId: decodeURIComponent(approveMatch[1]),
       modifiedTotal
     });
 
@@ -125,15 +130,37 @@ async function route(request, response) {
     return;
   }
 
-  const conversationMatch = url.pathname.match(/^\/admin\/conversations\/([^/]+)$/);
-  if (request.method === "GET" && conversationMatch) {
-    if (!isAdminAuthorized(request)) {
+  if (request.method === "GET" && url.pathname === "/admin/quotes") {
+    if (!isAdminAuthorized(request, url)) {
       response.writeHead(401);
       response.end();
       return;
     }
 
-    const conversation = store.get(conversationMatch[1]);
+    const quotes = store.list()
+      .filter((conversation) => conversation.quote)
+      .map((conversation) => ({
+        userId: conversation.userId,
+        status: conversation.status,
+        profile: conversation.profile,
+        quote: conversation.quote,
+        pendingAdminAction: conversation.pendingAdminAction,
+        updatedAt: conversation.updatedAt
+      }));
+
+    sendJson(response, 200, { quotes });
+    return;
+  }
+
+  const conversationMatch = url.pathname.match(/^\/admin\/conversations\/([^/]+)$/);
+  if (request.method === "GET" && conversationMatch) {
+    if (!isAdminAuthorized(request, url)) {
+      response.writeHead(401);
+      response.end();
+      return;
+    }
+
+    const conversation = store.get(decodeURIComponent(conversationMatch[1]));
     if (!conversation) {
       response.writeHead(404);
       response.end();
@@ -155,13 +182,21 @@ async function readJson(request) {
   return raw ? JSON.parse(raw) : {};
 }
 
-function isAdminAuthorized(request) {
-  return request.headers["x-admin-secret"] === config.ADMIN_APPROVAL_SECRET;
+function isAdminAuthorized(request, url = null) {
+  return (
+    request.headers["x-admin-secret"] === config.ADMIN_APPROVAL_SECRET ||
+    url?.searchParams.get("secret") === config.ADMIN_APPROVAL_SECRET
+  );
 }
 
 function sendJson(response, statusCode, payload) {
   response.writeHead(statusCode, { "Content-Type": "application/json" });
   response.end(JSON.stringify(payload));
+}
+
+function sendHtml(response, statusCode, html) {
+  response.writeHead(statusCode, { "Content-Type": "text/html; charset=utf-8" });
+  response.end(html);
 }
 
 function setSecurityHeaders(response) {
@@ -171,4 +206,135 @@ function setSecurityHeaders(response) {
   response.setHeader("X-Content-Type-Options", "nosniff");
   response.setHeader("X-Frame-Options", "DENY");
   response.setHeader("Referrer-Policy", "no-referrer");
+}
+
+function renderAdminDashboard() {
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CleanQuo Quote Dashboard</title>
+  <style>
+    :root { color-scheme: light; font-family: Arial, sans-serif; background: #f7f8fa; color: #1f2933; }
+    body { margin: 0; }
+    header { background: #111827; color: white; padding: 18px 24px; }
+    main { max-width: 1120px; margin: 0 auto; padding: 24px; }
+    .bar { display: flex; gap: 12px; align-items: center; justify-content: space-between; margin-bottom: 18px; }
+    .status { font-size: 14px; color: #52606d; }
+    button { border: 0; background: #111827; color: white; padding: 10px 14px; border-radius: 6px; cursor: pointer; font-weight: 700; }
+    button.secondary { background: #e4e7eb; color: #1f2933; }
+    button.approve { background: #147d64; }
+    input { padding: 10px; border: 1px solid #cbd2d9; border-radius: 6px; min-width: 140px; }
+    .grid { display: grid; gap: 14px; }
+    .card { background: white; border: 1px solid #d9e2ec; border-radius: 8px; padding: 16px; }
+    .card h2 { margin: 0 0 8px; font-size: 18px; }
+    .meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px; margin: 12px 0; }
+    .label { color: #616e7c; font-size: 12px; text-transform: uppercase; }
+    .value { font-weight: 700; margin-top: 2px; }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .empty { text-align: center; padding: 42px; color: #616e7c; }
+    .pending { color: #9a3412; font-weight: 700; }
+    .sent { color: #147d64; font-weight: 700; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>CleanQuo Quote Dashboard</h1>
+  </header>
+  <main>
+    <div class="bar">
+      <div>
+        <div class="status" id="status">Loading quotes...</div>
+      </div>
+      <button class="secondary" id="refresh">Refresh</button>
+    </div>
+    <section class="grid" id="quotes"></section>
+  </main>
+  <script>
+    const money = new Intl.NumberFormat("en-ZA", { style: "currency", currency: "ZAR" });
+    let secret = new URLSearchParams(location.search).get("secret") || localStorage.getItem("cleanquo_admin_secret") || "";
+    if (!secret) {
+      secret = prompt("Admin approval secret");
+      if (secret) localStorage.setItem("cleanquo_admin_secret", secret);
+    }
+
+    document.getElementById("refresh").addEventListener("click", loadQuotes);
+    loadQuotes();
+
+    async function loadQuotes() {
+      setStatus("Loading quotes...");
+      const response = await fetch("/admin/quotes?secret=" + encodeURIComponent(secret));
+      if (!response.ok) {
+        setStatus("Could not load quotes. Check the admin secret.");
+        return;
+      }
+      const data = await response.json();
+      renderQuotes(data.quotes || []);
+      setStatus((data.quotes || []).length + " quote(s) found.");
+    }
+
+    function renderQuotes(quotes) {
+      const root = document.getElementById("quotes");
+      if (!quotes.length) {
+        root.innerHTML = '<div class="card empty">No quotes yet. New customer quote requests will appear here.</div>';
+        return;
+      }
+
+      root.innerHTML = quotes.map((item) => {
+        const quote = item.quote || {};
+        const profile = item.profile || {};
+        const pending = item.status === "pending_admin_approval";
+        return '<article class="card">' +
+          '<h2>' + escapeHtml(profile.serviceRequired || "Quote") + '</h2>' +
+          '<div class="' + (pending ? "pending" : "sent") + '">' + escapeHtml(item.status) + '</div>' +
+          '<div class="meta">' +
+            field("Client", item.userId) +
+            field("Property", profile.propertySize) +
+            field("Add-ons", profile.addOns || "None") +
+            field("Location", profile.location) +
+            field("Total", money.format(quote.total || 0)) +
+            field("Deposit", money.format(quote.depositAmount || 0)) +
+          '</div>' +
+          '<div class="actions">' +
+            '<input id="amount-' + encodeURIComponent(item.userId) + '" type="number" min="0" step="1" placeholder="Modified total">' +
+            '<button class="approve" onclick="approveQuote(\\'' + encodeURIComponent(item.userId) + '\\', false)">Approve</button>' +
+            '<button onclick="approveQuote(\\'' + encodeURIComponent(item.userId) + '\\', true)">Send Modified</button>' +
+          '</div>' +
+        '</article>';
+      }).join("");
+    }
+
+    function field(label, value) {
+      return '<div><div class="label">' + escapeHtml(label) + '</div><div class="value">' + escapeHtml(value || "-") + '</div></div>';
+    }
+
+    async function approveQuote(encodedUserId, useModified) {
+      const input = document.getElementById("amount-" + encodedUserId);
+      const body = useModified && input.value ? { modifiedTotal: Number(input.value) } : {};
+      const response = await fetch("/admin/quotes/" + encodedUserId + "/approve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-admin-secret": secret },
+        body: JSON.stringify(body)
+      });
+      if (!response.ok) {
+        setStatus("Approval failed. Please refresh and try again.");
+        return;
+      }
+      setStatus("Quote sent to customer.");
+      await loadQuotes();
+    }
+
+    function setStatus(text) {
+      document.getElementById("status").textContent = text;
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;"
+      }[char]));
+    }
+  </script>
+</body>
+</html>`;
 }
