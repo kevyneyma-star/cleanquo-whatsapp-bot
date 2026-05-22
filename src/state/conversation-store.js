@@ -33,6 +33,12 @@ export class ConversationStore {
     return this.conversations.get(userId) ?? null;
   }
 
+  list() {
+    return [...this.conversations.values()].sort((a, b) =>
+      String(b.updatedAt).localeCompare(String(a.updatedAt))
+    );
+  }
+
   upsert(userId, patch) {
     const now = new Date().toISOString();
     const current = this.get(userId) ?? {
