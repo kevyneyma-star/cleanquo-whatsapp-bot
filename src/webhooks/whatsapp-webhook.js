@@ -1,6 +1,6 @@
 import { config } from "../config.js";
 import { approveQuoteForCustomer, handleInboundMessage } from "../conversation-flow.js";
-import { mapGreenApiWebhookToMessage } from "../services/greenapi.js";
+import { mapGreenApiWebhookToMessage, normalizeGreenApiChatId } from "../services/greenapi.js";
 import { sendText } from "../services/whatsapp.js";
 
 export function verifyWebhookChallenge(query) {
@@ -65,7 +65,11 @@ function isValidGreenApiToken(requestToken = "") {
 
 function isAdminAction(message) {
   if (!config.ADMIN_WHATSAPP_NUMBER) return false;
-  return message.from === config.ADMIN_WHATSAPP_NUMBER && readAdminCommand(message);
+  const adminIds = new Set([
+    config.ADMIN_WHATSAPP_NUMBER,
+    normalizeGreenApiChatId(config.ADMIN_WHATSAPP_NUMBER)
+  ]);
+  return adminIds.has(message.from) && readAdminCommand(message);
 }
 
 async function handleAdminAction(message) {
