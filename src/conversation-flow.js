@@ -116,7 +116,26 @@ async function startConversation(userId) {
   store.upsert(userId, { status: STATUS.ASK_SERVICE, profile: {} });
   await sendText(
     userId,
-    "Hi, welcome to our cleaning service. I can help you get a quick estimate and arrange a booking. What cleaning service do you need today?"
+    [
+      "😊Welcome to CleanQuo",
+      "Premium Deep Cleaning Services",
+      "",
+      "One of our team members will respond to you shortly. To get your quote sorted faster, please send us:",
+      "",
+      "1. Name:",
+      "2. Email:",
+      "3. Location:",
+      "",
+      "Let us know how we can make your space shine!",
+      "✨Home & Office Deep Cleaning",
+      "✨ Commercial & Industrial Deep Cleaning",
+      "✨Post-Construction Cleaning",
+      "✨ Move-In / Move-Out Deep Cleaning",
+      "✨Carpet & Upholstery Cleaning",
+      "✨Contract Cleaning & Staff Placement",
+      "",
+      "Which cleaning service do you need today?"
+    ].join("\n")
   );
   await sendText(userId, numberedList(SERVICE_OPTIONS));
 }
