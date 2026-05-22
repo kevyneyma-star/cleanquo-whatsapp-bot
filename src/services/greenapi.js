@@ -5,10 +5,12 @@ export function isGreenApiConfigured() {
 }
 
 export async function sendGreenApiText(chatId, message) {
+  const normalizedChatId = normalizeGreenApiChatId(chatId);
+
   if (config.WHATSAPP_DRY_RUN || !isGreenApiConfigured()) {
     if (config.WHATSAPP_DRY_RUN || !isProduction) {
-      console.log("GreenAPI dry-run:", JSON.stringify({ chatId, message }, null, 2));
-      return { dryRun: true, chatId, message };
+      console.log("GreenAPI dry-run:", JSON.stringify({ chatId: normalizedChatId, message }, null, 2));
+      return { dryRun: true, chatId: normalizedChatId, message };
     }
     throw new Error("GreenAPI credentials are not configured");
   }
@@ -16,7 +18,7 @@ export async function sendGreenApiText(chatId, message) {
   const response = await fetch(buildGreenApiUrl("sendMessage"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ chatId, message })
+    body: JSON.stringify({ chatId: normalizedChatId, message })
   });
 
   if (!response.ok) {
@@ -121,6 +123,14 @@ export function mapGreenApiWebhookToMessage(payload) {
     raw: payload,
     unsupportedType: typeMessage
   };
+}
+
+export function normalizeGreenApiChatId(value = "") {
+  const text = String(value).trim();
+  if (!text) return text;
+  if (text.includes("@")) return text;
+  const digits = text.replace(/\D/g, "");
+  return digits ? `${digits}@c.us` : text;
 }
 
 function buildGreenApiUrl(method) {
