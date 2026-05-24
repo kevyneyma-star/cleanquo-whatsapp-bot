@@ -138,10 +138,11 @@ async function route(request, response) {
     }
 
     const quotes = store.list()
-      .filter((conversation) => conversation.quote)
       .map((conversation) => ({
         userId: conversation.userId,
         status: conversation.status,
+        currentScreen: conversation.current_screen,
+        currentBranch: conversation.current_branch,
         profile: conversation.profile,
         quote: conversation.quote,
         pendingAdminAction: conversation.pendingAdminAction,
@@ -294,7 +295,7 @@ function renderAdminDashboard() {
     function renderQuotes(quotes) {
       const root = document.getElementById("quotes");
       if (!quotes.length) {
-        root.innerHTML = '<div class="card empty">No quotes yet. New customer quote requests will appear here.</div>';
+        root.innerHTML = '<div class="card empty">No leads or quotes are saved in this running session yet. When a customer starts the WhatsApp wizard, their progress will appear here. When they tap Generate Quote, the estimate will show with approval buttons.</div>';
         return;
       }
 
@@ -302,22 +303,25 @@ function renderAdminDashboard() {
         const quote = item.quote || {};
         const profile = item.profile || {};
         const pending = item.status === "pending_admin_approval";
+        const hasQuote = Boolean(item.quote);
+        const service = profile.serviceRequired || item.currentBranch || "Lead in progress";
         return '<article class="card">' +
-          '<h2>' + escapeHtml(profile.serviceRequired || "Quote") + '</h2>' +
+          '<h2>' + escapeHtml(service) + '</h2>' +
           '<div class="' + (pending ? "pending" : "sent") + '">' + escapeHtml(item.status) + '</div>' +
           '<div class="meta">' +
             field("Client", item.userId) +
+            field("Current Screen", item.currentScreen || "-") +
             field("Property", profile.propertySize) +
             field("Add-ons", profile.addOns || "None") +
             field("Location", profile.location) +
-            field("Total", money.format(quote.total || 0)) +
-            field("Deposit", money.format(quote.depositAmount || 0)) +
+            field("Total", hasQuote ? money.format(quote.total || 0) : "Not generated yet") +
+            field("Deposit", hasQuote ? money.format(quote.depositAmount || 0) : "Not generated yet") +
           '</div>' +
-          '<div class="actions">' +
+          (hasQuote ? '<div class="actions">' +
             '<input id="amount-' + encodeURIComponent(item.userId) + '" type="number" min="0" step="1" placeholder="Modified total">' +
             '<button class="approve" onclick="approveQuote(\\'' + encodeURIComponent(item.userId) + '\\', false)">Approve</button>' +
             '<button onclick="approveQuote(\\'' + encodeURIComponent(item.userId) + '\\', true)">Send Modified</button>' +
-          '</div>' +
+          '</div>' : '<div class="status">Waiting for customer to finish the wizard and generate the quote.</div>') +
         '</article>';
       }).join("");
     }
