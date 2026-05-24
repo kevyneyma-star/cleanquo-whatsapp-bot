@@ -27,7 +27,7 @@ await handleInboundMessage({ from: userId, type: "text", text: { body: "1" } });
 await handleInboundMessage({ from: userId, type: "text", text: { body: "1, 5" } });
 await handleInboundMessage({ from: userId, type: "text", text: { body: "No" } });
 await handleInboundMessage({ from: userId, type: "text", text: { body: "No" } });
-await handleInboundMessage({ from: userId, type: "text", text: { body: "Generate Quote" } });
+await handleInboundMessage({ from: userId, type: "text", text: { body: "2" } });
 
 assert.equal(store.get(userId).status, "pending_admin_approval");
 await approveQuoteForCustomer({ userId });
