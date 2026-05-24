@@ -26,8 +26,8 @@ export function buildTextMessagePayload(to, body) {
 
 export async function sendInteractiveButtons(to, body, buttons) {
   if (config.WHATSAPP_PROVIDER === "greenapi") {
-    const options = buttons.map((button) => `- ${button.title}`).join("\n");
-    return sendGreenApiText(to, `${body}\n\n${options}`);
+    const options = buttons.map((button, index) => `${index + 1}. ${button.title}`).join("\n");
+    return sendGreenApiText(to, `${body}\n\nReply with a number:\n${options}`);
   }
 
   if (buttons.length > 3) {
