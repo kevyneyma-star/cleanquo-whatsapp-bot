@@ -30,6 +30,13 @@ export async function sendInteractiveButtons(to, body, buttons) {
     return sendGreenApiText(to, `${body}\n\n${options}`);
   }
 
+  if (buttons.length > 3) {
+    return sendList(to, body, "Choose", buttons.map((button) => ({
+      id: button.id,
+      title: button.title
+    })));
+  }
+
   return sendMessage({
     messaging_product: "whatsapp",
     to,
