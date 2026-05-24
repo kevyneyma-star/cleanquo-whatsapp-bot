@@ -17,9 +17,17 @@ store.reset(userId);
 
 await handleInboundMessage({ from: userId, type: "text", text: { body: "start" } });
 await handleInboundMessage({ from: userId, type: "text", text: { body: "1" } });
-await handleInboundMessage({ from: userId, type: "text", text: { body: "3 bedrooms, 2 bathrooms" } });
-await handleInboundMessage({ from: userId, type: "text", text: { body: "carpet and oven" } });
-await handleInboundMessage({ from: userId, type: "text", text: { body: "Sandton" } });
+await handleInboundMessage({ from: userId, type: "text", text: { body: "1" } });
+await handleInboundMessage({ from: userId, type: "text", text: { body: "1" } });
+await handleInboundMessage({ from: userId, type: "text", text: { body: "1" } });
+await handleInboundMessage({ from: userId, type: "text", text: { body: "1" } });
+await handleInboundMessage({ from: userId, type: "text", text: { body: "3" } });
+await handleInboundMessage({ from: userId, type: "text", text: { body: "2" } });
+await handleInboundMessage({ from: userId, type: "text", text: { body: "1" } });
+await handleInboundMessage({ from: userId, type: "text", text: { body: "1, 5" } });
+await handleInboundMessage({ from: userId, type: "text", text: { body: "No" } });
+await handleInboundMessage({ from: userId, type: "text", text: { body: "No" } });
+await handleInboundMessage({ from: userId, type: "text", text: { body: "Generate Quote" } });
 
 assert.equal(store.get(userId).status, "pending_admin_approval");
 await approveQuoteForCustomer({ userId });
