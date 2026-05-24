@@ -1,0 +1,15 @@
+{
+  "name": "cleaning-whatsapp-bot",
+  "version": "1.0.0",
+  "description": "WhatsApp business automation bot for lead qualification, quotes, bookings, and POP verification.",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test:smoke": "node src/smoke-test.js",
+    "test:greenapi": "node src/greenapi-smoke-test.js",
+    "verify:whatsapp": "node src/verify-whatsapp.js",
+    "send:test": "node src/send-test-text.js"
+  }
+}
