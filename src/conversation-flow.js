@@ -170,6 +170,10 @@ async function handleWizardStep(conversation, message) {
 
   switch (conversation.current_screen) {
     case SCREENS.WELCOME:
+      if (selection || /^[1-6]$/.test(text) || findBySelection(SERVICES, text)) {
+        const ready = updateSession(conversation.userId, { current_screen: SCREENS.SERVICE_SELECTION });
+        return captureService(ready, selection || text);
+      }
       return transition(conversation, { current_screen: SCREENS.SERVICE_SELECTION });
     case SCREENS.SERVICE_SELECTION:
       return captureService(conversation, selection || text);
@@ -402,8 +406,8 @@ async function captureSiteVisitSlot(conversation, message) {
 }
 
 async function handleReview(conversation, value) {
-  if (/^edit$/i.test(value)) return transition(conversation, { previous_screen: SCREENS.REVIEW, current_screen: SCREENS.EDIT_SELECTION });
-  if (!/generate|quote|yes|proceed|approve/i.test(value)) {
+  if (/^(edit|1)$/i.test(value)) return transition(conversation, { previous_screen: SCREENS.REVIEW, current_screen: SCREENS.EDIT_SELECTION });
+  if (!/^(2)$|generate|quote|yes|proceed|approve/i.test(value)) {
     await sendText(conversation.userId, "Please choose Edit or Generate Quote.");
     return renderCurrentScreen(conversation);
   }
