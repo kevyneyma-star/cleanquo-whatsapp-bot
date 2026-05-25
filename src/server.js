@@ -137,17 +137,7 @@ async function route(request, response) {
       return;
     }
 
-    const quotes = store.list()
-      .map((conversation) => ({
-        userId: conversation.userId,
-        status: conversation.status,
-        currentScreen: conversation.current_screen,
-        currentBranch: conversation.current_branch,
-        profile: conversation.profile,
-        quote: conversation.quote,
-        pendingAdminAction: conversation.pendingAdminAction,
-        updatedAt: conversation.updatedAt
-      }));
+    const quotes = store.list().flatMap(toDashboardQuoteRecords);
 
     sendJson(response, 200, { quotes });
     return;
@@ -220,6 +210,32 @@ function setSecurityHeaders(response) {
   response.setHeader("Referrer-Policy", "no-referrer");
 }
 
+function toDashboardQuoteRecords(conversation) {
+  const history = conversation.quote_history?.length
+    ? conversation.quote_history
+    : conversation.quote
+      ? [conversation.quote]
+      : [];
+
+  return history
+    .map((quote) => ({
+      userId: conversation.userId,
+      quoteId: quote.quoteId,
+      status: conversation.status,
+      quoteStatus: quote.status ?? conversation.status,
+      currentScreen: conversation.current_screen,
+      currentBranch: conversation.current_branch,
+      profile: conversation.profile,
+      quote,
+      pendingAdminAction: conversation.pendingAdminAction,
+      createdAt: conversation.createdAt,
+      enquiredAt: quote.enquiredAt ?? conversation.createdAt,
+      requestedAt: quote.requestedAt,
+      updatedAt: quote.updatedAt ?? conversation.updatedAt
+    }))
+    .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
+}
+
 function renderAdminDashboard() {
   return `<!doctype html>
 <html lang="en">
@@ -249,6 +265,7 @@ function renderAdminDashboard() {
     .empty { text-align: center; padding: 42px; color: #616e7c; }
     .pending { color: #9a3412; font-weight: 700; }
     .sent { color: #147d64; font-weight: 700; }
+    .muted { color: #616e7c; }
     .auth { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   </style>
 </head>
@@ -318,27 +335,33 @@ function renderAdminDashboard() {
     function renderQuotes(quotes) {
       const root = document.getElementById("quotes");
       if (!quotes.length) {
-        root.innerHTML = '<div class="card empty">No leads or quotes are saved in this running session yet. When a customer starts the WhatsApp wizard, their progress will appear here. When they tap Generate Quote, the estimate will show with approval buttons.</div>';
+        root.innerHTML = '<div class="card empty">No quote records are saved yet. When a customer reaches Generate Quote, the enquiry will appear here with its date, total, and current status.</div>';
         return;
       }
 
       root.innerHTML = quotes.map((item) => {
         const quote = item.quote || {};
         const profile = item.profile || {};
-        const pending = item.status === "pending_admin_approval";
+        const pending = item.quoteStatus === "pending_admin_approval";
         const hasQuote = Boolean(item.quote);
-        const service = profile.serviceRequired || item.currentBranch || "Lead in progress";
+        const service = profile.serviceRequired || quote.service || item.currentBranch || "Quote";
         return '<article class="card">' +
           '<h2>' + escapeHtml(service) + '</h2>' +
-          '<div class="' + (pending ? "pending" : "sent") + '">' + escapeHtml(item.status) + '</div>' +
+          '<div class="' + (pending ? "pending" : "sent") + '">' + escapeHtml(formatStatus(item.quoteStatus || item.status)) + '</div>' +
           '<div class="meta">' +
+            field("Quote ID", item.quoteId || "-") +
             field("Client", item.userId) +
+            field("Enquired", formatDate(item.enquiredAt || item.createdAt)) +
+            field("Generated", formatDate(item.requestedAt || quote.requestedAt)) +
+            field("Last Updated", formatDate(item.updatedAt || quote.updatedAt)) +
             field("Current Screen", item.currentScreen || "-") +
             field("Property", profile.propertySize) +
             field("Add-ons", profile.addOns || "None") +
             field("Location", profile.location) +
             field("Total", hasQuote ? money.format(quote.total || 0) : "Not generated yet") +
             field("Deposit", hasQuote ? money.format(quote.depositAmount || 0) : "Not generated yet") +
+            field("Booking", quote.selectedSlot ? quote.selectedSlot.label : "-") +
+            field("Payment Ref", quote.paymentReference || "-") +
           '</div>' +
           (hasQuote ? '<div class="actions">' +
             '<input id="amount-' + encodeURIComponent(item.userId) + '" type="number" min="0" step="1" placeholder="Modified total">' +
@@ -351,6 +374,23 @@ function renderAdminDashboard() {
 
     function field(label, value) {
       return '<div><div class="label">' + escapeHtml(label) + '</div><div class="value">' + escapeHtml(value || "-") + '</div></div>';
+    }
+
+    function formatDate(value) {
+      if (!value) return "-";
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return value;
+      return date.toLocaleString("en-ZA", {
+        year: "numeric",
+        month: "short",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit"
+      });
+    }
+
+    function formatStatus(value) {
+      return String(value || "-").replace(/_/g, " ");
     }
 
     async function approveQuote(encodedUserId, useModified) {

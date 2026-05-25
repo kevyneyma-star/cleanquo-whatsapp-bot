@@ -88,7 +88,6 @@ export async function handleInboundMessage(message) {
   const conversation = store.get(userId);
 
   if (isRestart(text)) {
-    store.reset(userId);
     return startConversation(userId);
   }
 
@@ -129,10 +128,18 @@ export async function approveQuoteForCustomer({ userId, modifiedTotal }) {
   const quote = {
     ...conversation.quote,
     total: modifiedTotal ?? conversation.quote.total,
-    depositAmount: Math.ceil((modifiedTotal ?? conversation.quote.total) * 0.5)
+    depositAmount: Math.ceil((modifiedTotal ?? conversation.quote.total) * 0.5),
+    status: STATUS.QUOTE_SENT,
+    approvedAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
   };
 
-  store.upsert(userId, { status: STATUS.QUOTE_SENT, quote, pendingAdminAction: null });
+  store.upsert(userId, {
+    status: STATUS.QUOTE_SENT,
+    quote,
+    quote_history: updateQuoteHistory(conversation, quote),
+    pendingAdminAction: null
+  });
 
   await sendInteractiveButtons(userId, formatCustomerQuote(quote), [
     { id: "accept_quote", title: "Accept" },
@@ -142,6 +149,8 @@ export async function approveQuoteForCustomer({ userId, modifiedTotal }) {
 
 async function startConversation(userId) {
   const session = createInitialSession(userId);
+  const existing = store.get(userId);
+  if (existing?.quote_history?.length) session.quote_history = existing.quote_history;
   store.upsert(userId, session);
   await sendInteractiveButtons(
     userId,
@@ -430,15 +439,24 @@ async function handleEditSelection(conversation, value) {
 
 async function generateQuoteForApproval(conversation) {
   const profile = buildLegacyProfile(conversation);
+  const requestedAt = new Date().toISOString();
   const updated = updateSession(conversation.userId, {
     status: STATUS.PENDING_ADMIN_APPROVAL,
     profile,
     current_screen: "QUOTE_SCREEN",
     quote_ready: true
   });
-  const quote = calculateQuote(profile, updated);
+  const quote = {
+    ...calculateQuote(profile, updated),
+    quoteId: createReference("CQ"),
+    status: STATUS.PENDING_ADMIN_APPROVAL,
+    enquiredAt: updated.createdAt ?? requestedAt,
+    requestedAt,
+    updatedAt: requestedAt
+  };
   const withQuote = store.upsert(conversation.userId, {
     quote,
+    quote_history: [...(updated.quote_history ?? []), quote],
     pendingAdminAction: { type: "quote_approval", requestedAt: new Date().toISOString() }
   });
 
@@ -456,7 +474,13 @@ async function handleQuoteResponse(conversation, text) {
     return;
   }
   const slots = await getAvailableSlots({ location: conversation.profile.location });
-  store.upsert(conversation.userId, { status: STATUS.WAITING_SLOT_SELECTION, booking: { ...(conversation.booking ?? {}), availableSlots: slots } });
+  const quote = markQuoteStatus(conversation.quote, "accepted", { acceptedAt: new Date().toISOString() });
+  store.upsert(conversation.userId, {
+    status: STATUS.WAITING_SLOT_SELECTION,
+    quote,
+    quote_history: updateQuoteHistory(conversation, quote),
+    booking: { ...(conversation.booking ?? {}), availableSlots: slots }
+  });
   await sendList(conversation.userId, "Great, please choose a preferred date and time from the available slots.", "Select slot", slots.map((slot) => ({ id: `slot:${slot.id}`, title: slot.label, description: conversation.profile.location })));
 }
 
@@ -469,7 +493,17 @@ async function handleSlotSelection(conversation, message) {
   const hold = await holdSlot({ userId: conversation.userId, slot: selectedSlot });
   const paymentReference = createReference(config.PAYMENT_REFERENCE_PREFIX);
   const booking = { ...conversation.booking, selectedSlot, hold, paymentReference, status: "awaiting_deposit" };
-  store.upsert(conversation.userId, { status: STATUS.WAITING_POP, booking });
+  const quote = markQuoteStatus(conversation.quote, "deposit_requested", {
+    selectedSlot,
+    paymentReference,
+    depositRequestedAt: new Date().toISOString()
+  });
+  store.upsert(conversation.userId, {
+    status: STATUS.WAITING_POP,
+    quote,
+    quote_history: updateQuoteHistory(conversation, quote),
+    booking
+  });
   await sendText(conversation.userId, `Perfect. I've provisionally held ${selectedSlot.label} for you.`);
   await sendText(conversation.userId, buildPaymentInstructions({ reference: paymentReference, depositAmount: conversation.quote.depositAmount, currencyCode: conversation.quote.currency }));
 }
@@ -479,7 +513,11 @@ async function handlePopUpload(conversation, media) {
   if (!isAllowedPopMedia(media)) return sendText(conversation.userId, "I received the file, but POP must be a PDF, JPG, or PNG. Please resend it in one of those formats.");
   const updated = store.upsert(conversation.userId, {
     status: STATUS.POP_RECEIVED,
+    quote: markQuoteStatus(conversation.quote, "pop_received", { popReceivedAt: new Date().toISOString() }),
     booking: { ...conversation.booking, status: "pending_bank_clearance", pop: { ...media, receivedAt: new Date().toISOString() } }
+  });
+  store.upsert(conversation.userId, {
+    quote_history: updateQuoteHistory(updated, updated.quote)
   });
   await notifyAdminPop({ conversation: updated, media });
   await sendText(conversation.userId, "Thank you, your POP has been received. Your booking is provisionally confirmed pending final bank clearance.");
@@ -603,8 +641,27 @@ function createInitialSession(userId) {
     profile: {},
     quote: null,
     booking: null,
-    pendingAdminAction: null
+    pendingAdminAction: null,
+    quote_history: []
   };
+}
+
+function markQuoteStatus(quote, status, patch = {}) {
+  if (!quote) return quote;
+  return {
+    ...quote,
+    ...patch,
+    status,
+    updatedAt: new Date().toISOString()
+  };
+}
+
+function updateQuoteHistory(conversation, quote) {
+  if (!quote) return conversation.quote_history ?? [];
+  const history = conversation.quote_history ?? [];
+  const index = history.findIndex((item) => item.quoteId === quote.quoteId);
+  if (index === -1) return [...history, quote];
+  return history.map((item, itemIndex) => (itemIndex === index ? { ...item, ...quote } : item));
 }
 
 function deriveStep(session) {
