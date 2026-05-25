@@ -4,7 +4,8 @@ import { randomUUID } from "node:crypto";
 import { config } from "../config.js";
 
 const cwd = globalThis.process?.cwd?.() ?? globalThis.nodeRepl?.cwd ?? ".";
-const CONFIGURED_DATA_DIR = path.resolve(cwd, config.STATE_DIR ?? ".data");
+const DEFAULT_DATA_DIR = fs.existsSync("/var/data") ? "/var/data" : ".data";
+const CONFIGURED_DATA_DIR = path.resolve(cwd, config.STATE_DIR ?? DEFAULT_DATA_DIR);
 const STORE_FILE = config.STATE_FILE
   ? path.resolve(cwd, config.STATE_FILE)
   : path.join(CONFIGURED_DATA_DIR, "conversations.json");
@@ -47,7 +48,9 @@ export class ConversationStore {
     return {
       storeFile: STORE_FILE,
       count: this.conversations.size,
-      exists: fs.existsSync(STORE_FILE)
+      exists: fs.existsSync(STORE_FILE),
+      dataDir: DATA_DIR,
+      dataDirExists: fs.existsSync(DATA_DIR)
     };
   }
 

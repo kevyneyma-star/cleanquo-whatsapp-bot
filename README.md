@@ -170,7 +170,7 @@ Any HTTPS Node host works, including Render, Railway, Fly.io, Azure App Service,
 
 ## Persistent Storage
 
-The bot stores live conversation state, dashboard leads, quotes, bookings, and POP status in a JSON file. By default it writes to:
+The bot stores live conversation state, dashboard leads, quotes, bookings, and POP status in a JSON file. If `/var/data` exists, the bot automatically uses it. Otherwise it writes to:
 
 ```text
 .data/conversations.json

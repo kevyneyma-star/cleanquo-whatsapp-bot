@@ -64,8 +64,8 @@ const SCREENS = {
 
 const SERVICES = [
   { id: "move", title: "Move In / Out Cleaning", branch: "BRANCH_A_DEEP_CLEAN" },
-  { id: "post", title: "Post Construction Cleaning", branch: "BRANCH_A_DEEP_CLEAN" },
-  { id: "spring", title: "Spring Cleaning", branch: "BRANCH_A_DEEP_CLEAN" },
+  { id: "post", title: "Post Construction/Renovation Cleaning", branch: "BRANCH_A_DEEP_CLEAN" },
+  { id: "spring", title: "Once Off Spring Cleaning", branch: "BRANCH_A_DEEP_CLEAN" },
   { id: "carpet", title: "Carpet & Upholstery Cleaning", branch: "BRANCH_B_CARPETS" },
   { id: "contract", title: "Contract Cleaning", branch: "BRANCH_C_DOMESTIC" },
   { id: "commercial", title: "Commercial & Industrial Cleaning", branch: "BRANCH_D_COMMERCIAL" }
@@ -73,8 +73,8 @@ const SERVICES = [
 
 const EXTRA_AREAS = [
   "Kitchen", "Pantry", "Scullery", "Laundry", "Dining", "Living Room",
-  "Pyjama Lounge", "Patio", "Balcony", "Braai Area", "Lapa",
-  "Storeroom", "Walk-In Closet", "Study", "Office"
+  "Entertainment Room", "Pyjama Lounge", "Patio", "Balcony", "Braai Area", "Lapa",
+  "Storeroom", "Walk-In Closet", "Entrance", "Study", "Office"
 ];
 
 const UPHOLSTERY_ITEMS = ["Fitted Carpet", "Loose Carpet", "Couch", "Mattress", "Other"];
@@ -187,11 +187,11 @@ async function handleWizardStep(conversation, message) {
     case SCREENS.SERVICE_SELECTION:
       return captureService(conversation, selection || text);
     case SCREENS.A_PROPERTY_TYPE:
-      return captureChoice(conversation, "property_type", selection || text, ["House", "Apartment", "Office"], SCREENS.A_IS_FURNISHED);
+      return capturePropertyType(conversation, selection || text, SCREENS.A_IS_FURNISHED);
     case SCREENS.A_IS_FURNISHED:
       return captureChoice(conversation, "is_furnished", selection || text, ["Empty", "Furnished"], SCREENS.A_STRUCTURE);
     case SCREENS.A_STRUCTURE:
-      return captureChoice(conversation, "property_structure", selection || text, ["Single Story", "Double Story", "Other"], SCREENS.A_BEDROOMS);
+      return captureStructure(conversation, selection || text, SCREENS.A_BEDROOMS);
     case SCREENS.A_BEDROOMS:
       return captureCountOrCustom(conversation, "bedroom_count", selection || text, SCREENS.A_BEDROOMS_CUSTOM, SCREENS.A_BATHROOMS);
     case SCREENS.A_BEDROOMS_CUSTOM:
@@ -203,7 +203,13 @@ async function handleWizardStep(conversation, message) {
     case SCREENS.A_WINDOWS:
       return captureChoice(conversation, "window_type", selection || text, ["Single Volume", "Double Volume", "Full Length"], SCREENS.A_EXTRA_AREAS);
     case SCREENS.A_EXTRA_AREAS:
-      return captureMultiSelect(conversation, "extra_rooms_list", selection || text, EXTRA_AREAS, SCREENS.A_QUARTERS);
+      return captureMultiSelect(
+        conversation,
+        "extra_rooms_list",
+        selection || text,
+        EXTRA_AREAS,
+        conversation.property_structure === "Double Story" ? SCREENS.A_QUARTERS : SCREENS.A_UPHOLSTERY_ADDONS
+      );
     case SCREENS.A_QUARTERS:
       return captureQuartersExists(conversation, selection || text);
     case SCREENS.A_QUARTERS_BEDROOMS:
@@ -286,6 +292,25 @@ async function captureChoice(conversation, key, value, options, nextScreen) {
     return renderCurrentScreen(conversation);
   }
   return transition(conversation, { [key]: selected, current_screen: nextScreen });
+}
+
+async function capturePropertyType(conversation, value, nextScreen) {
+  const selected = findOption(["House", "Apartment", "Office"], value);
+  if (!selected) {
+    await sendText(conversation.userId, "Please choose one of the available options.");
+    return renderCurrentScreen(conversation);
+  }
+  return transition(conversation, { property_type: selected, current_screen: nextScreen });
+}
+
+async function captureStructure(conversation, value, standardNextScreen) {
+  const selected = findOption(["Single Story", "Double Story", "Other"], value);
+  if (!selected) {
+    await sendText(conversation.userId, "Please choose one of the available options.");
+    return renderCurrentScreen(conversation);
+  }
+  const nextScreen = conversation.property_type === "Office" ? SCREENS.D_KNOWS_SQM : standardNextScreen;
+  return transition(conversation, { property_structure: selected, current_screen: nextScreen });
 }
 
 async function captureCountOrCustom(conversation, key, value, customScreen, nextScreen) {
@@ -587,13 +612,13 @@ async function renderCurrentScreen(conversation) {
     case SCREENS.C_CONTRACT_TYPE:
       return sendButtons(conversation, "Contract cleaning type:", ["Stay In", "Stay Out"]);
     case SCREENS.C_DAYS_PER_WEEK:
-      return sendText(conversation.userId, `${progress(conversation)}\nHow many days per week? Please reply with a number from 1 to 7.`);
+      return sendText(conversation.userId, `${progress(conversation)}\nHow many days will the lady work per week? Please reply with a number from 1 to 7.`);
     case SCREENS.C_PREFERENCES:
       return sendText(conversation.userId, "Any personal preferences? Example: ironing, child care, office hours, products to avoid. Reply None if not.");
     case SCREENS.D_KNOWS_SQM:
       return sendButtons(conversation, "Do you know the square meterage?", ["Yes", "No"]);
     case SCREENS.D_SQM:
-      return sendText(conversation.userId, `${progress(conversation)}\nPlease type the approximate square meterage.`);
+      return sendText(conversation.userId, `${progress(conversation)}\nWhat's the size in square meters?`);
     case SCREENS.D_SITE_VISIT_SLOT:
       return sendList(conversation.userId, "No problem. Please choose a site visit slot.", "Site visit", (conversation.site_visit_slots ?? []).map((slot) => ({ id: `slot:${slot.id}`, title: slot.label })));
     case SCREENS.REVIEW:
